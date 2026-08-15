@@ -78,6 +78,7 @@ async function promptNewFolder() {
 }
 
 function showFolderMenu(folder) {
+  closeAllSheets();
   $('#folderMenuTitle').textContent = folder.name;
   $('#folderMenuSheet').classList.add('open');
   $('#folderMenuSheet').dataset.folderId = folder.id;
@@ -315,7 +316,12 @@ function setupSwipe() {
 }
 
 // ---------- Add item ----------
+function closeAllSheets() {
+  $$('.sheet').forEach(s => s.classList.remove('open'));
+}
+
 function openAddSheet() {
+  closeAllSheets();
   $('#addSheet').classList.add('open');
   $('#addUrl').value = '';
   $('#addNote').value = '';
@@ -508,7 +514,7 @@ async function runSearch(query) {
   });
 }
 
-function openSearch() { $('#searchSheet').classList.add('open'); $('#searchInput').focus(); }
+function openSearch() { closeAllSheets(); $('#searchSheet').classList.add('open'); $('#searchInput').focus(); }
 function closeSearch() { $('#searchSheet').classList.remove('open'); $('#searchInput').value = ''; $('#searchResults').innerHTML = ''; }
 
 // ---------- Sync / Backup ----------
@@ -559,7 +565,11 @@ async function handlePendingShare() {
   localStorage.removeItem('vault-pending-share');
   try {
     const { url, text } = JSON.parse(pending);
-    const link = url || (text && /^https?:\/\//i.test(text.trim()) ? text.trim() : null);
+    // Many apps (YouTube included) send the link buried inside a sentence,
+    // e.g. "Check out this video: https://youtu.be/xyz" — search for a URL
+    // anywhere in the text rather than requiring it to be the whole string.
+    const urlMatch = text && text.match(/https?:\/\/[^\s]+/i);
+    const link = url || (urlMatch ? urlMatch[0] : null);
     await VaultDB.init();
     state.folders = await VaultDB.getFolders();
 
@@ -576,6 +586,7 @@ async function handlePendingShare() {
 // Tap-a-folder-to-save flow — used for incoming shares so there's no separate
 // "Save" button to miss. Saving happens the instant a folder is tapped.
 function openQuickSaveSheet(previewText) {
+  closeAllSheets();
   $('#quickSavePreview').textContent = previewText.length > 90 ? previewText.slice(0, 90) + '…' : previewText;
   const list = $('#quickSaveFolderList');
   list.innerHTML = '';
@@ -591,18 +602,22 @@ function openQuickSaveSheet(previewText) {
 
 async function quickSaveToFolder(folderId, folderName) {
   const share = state.incomingShare;
-  if (!share) return;
-  if (share.kind === 'link') {
-    const item = await VaultDB.addItem({ folderId, type: 'link', url: share.url, title: share.url.replace(/^https?:\/\//, '').slice(0, 60) });
-    const src = detectSource(share.url);
-    if (src === SOURCES.youtube) fetchYoutubePreview(item);
-  } else if (share.kind === 'note') {
-    await VaultDB.addItem({ folderId, type: 'note', text: share.text, title: share.text.slice(0, 40) });
+  if (!share) { showToast('Nothing to save — try sharing again'); return; }
+  try {
+    if (share.kind === 'link') {
+      const item = await VaultDB.addItem({ folderId, type: 'link', url: share.url, title: share.url.replace(/^https?:\/\//, '').slice(0, 60) });
+      const src = detectSource(share.url);
+      if (src === SOURCES.youtube) fetchYoutubePreview(item);
+    } else if (share.kind === 'note') {
+      await VaultDB.addItem({ folderId, type: 'note', text: share.text, title: share.text.slice(0, 40) });
+    }
+    state.incomingShare = null;
+    $('#quickSaveSheet').classList.remove('open');
+    showToast(`Saved to ${folderName}`);
+    await renderHome();
+  } catch (e) {
+    showToast('Save failed — please try again');
   }
-  state.incomingShare = null;
-  $('#quickSaveSheet').classList.remove('open');
-  showToast(`Saved to ${folderName}`);
-  await renderHome();
 }
 
 function showToast(message) {
