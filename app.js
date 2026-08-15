@@ -21,7 +21,9 @@ const state = {
   feedIndex: 0,
   theme: localStorage.getItem('vault-theme') || 'dark',
   pendingSharedFiles: null,
-  recordedVoice: null
+  recordedVoice: null,
+  feedViewMode: 'list',
+  incomingShare: null
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -104,29 +106,91 @@ async function openFolder(folderId) {
   state.currentFolder = state.folders.find(f => f.id === folderId);
   state.feedItems = await VaultDB.getItemsByFolder(folderId);
   state.feedIndex = 0;
+  state.feedViewMode = 'list'; // default to list — easier to scan as a folder grows
   $('#feedFolderName').textContent = state.currentFolder.name;
   showScreen('feed');
   renderFeed();
+  applyFeedViewMode();
+}
+
+function applyFeedViewMode() {
+  const isList = state.feedViewMode === 'list';
+  $('#feedViewport').classList.toggle('hidden', isList);
+  $('#feedList').classList.toggle('active', isList);
+  $('#feedViewToggle').textContent = isList ? '▤' : '☰';
+  $('#feedViewToggle').title = isList ? 'Switch to swipe view' : 'Switch to list view';
+}
+
+function toggleFeedViewMode() {
+  state.feedViewMode = state.feedViewMode === 'list' ? 'swipe' : 'list';
+  applyFeedViewMode();
+}
+
+function openFeedAtIndex(i) {
+  state.feedViewMode = 'swipe';
+  applyFeedViewMode();
+  goToFeedIndex(i, false);
 }
 
 function renderFeed() {
   const wrap = $('#feedTrack');
+  const list = $('#feedList');
   wrap.innerHTML = '';
+  list.innerHTML = '';
   wrap.style.transform = 'translateX(0)';
 
   if (state.feedItems.length === 0) {
-    wrap.innerHTML = `<div class="feed-empty">
+    const emptyHtml = `<div class="feed-empty">
       <div class="feed-empty-glyph">⬡</div>
       <p>Nothing saved here yet.</p>
       <p class="muted">Share a link into Vault, or tap + to add one.</p>
     </div>`;
+    wrap.innerHTML = emptyHtml;
+    list.innerHTML = emptyHtml;
     return;
   }
 
   state.feedItems.forEach((item, i) => {
     wrap.appendChild(renderFeedCard(item));
+    list.appendChild(renderListRow(item, i));
   });
   goToFeedIndex(0, false);
+}
+
+function renderListRow(item, index) {
+  const src = detectSource(item.url);
+  const row = document.createElement('div');
+  row.className = 'list-row';
+
+  let thumbHtml;
+  if ((item.type === 'screenshot') && item.dataUrl) {
+    thumbHtml = `<img class="list-thumb" src="${item.dataUrl}" alt="">`;
+  } else if (item.type === 'link' && item.thumbnail) {
+    thumbHtml = `<img class="list-thumb" src="${item.thumbnail}" alt="">`;
+  } else if (item.type === 'link') {
+    thumbHtml = `<div class="list-thumb" style="color:${src.color}">${src.icon}</div>`;
+  } else if (item.type === 'note') {
+    thumbHtml = `<div class="list-thumb">📝</div>`;
+  } else if (item.type === 'voice') {
+    thumbHtml = `<div class="list-thumb">🎤</div>`;
+  } else {
+    thumbHtml = `<div class="list-thumb">${fileGlyph(item.fileType)}</div>`;
+  }
+
+  const subtitle = item.type === 'link' ? (item.url || '')
+    : item.type === 'note' ? (item.text || '')
+    : item.type === 'voice' ? 'Voice memo'
+    : (item.fileType || 'File');
+
+  row.innerHTML = `
+    ${thumbHtml}
+    <div class="list-row-text">
+      <div class="list-row-title">${escapeHtml(item.title || subtitle || 'Untitled')}</div>
+      <div class="list-row-sub">${escapeHtml(subtitle)}</div>
+    </div>
+  `;
+  row.addEventListener('click', () => openFeedAtIndex(index));
+  return row;
 }
 
 function renderFeedCard(item) {
@@ -282,6 +346,7 @@ async function submitAdd(type) {
     const src = detectSource(url);
     const item = await VaultDB.addItem({ folderId, type: 'link', url, title: url.replace(/^https?:\/\//, '').slice(0, 60) });
     closeAddSheet();
+    showToast('Link saved');
     renderHome();
     if (state.currentFolder && state.currentFolder.id === folderId) {
       state.feedItems = await VaultDB.getItemsByFolder(folderId);
@@ -325,6 +390,7 @@ async function submitAdd(type) {
   }
 
   closeAddSheet();
+  showToast(type === 'note' ? 'Note saved' : type === 'voice' ? 'Voice memo saved' : 'Saved');
   renderHome();
   if (state.currentFolder && state.currentFolder.id === folderId) {
     state.feedItems = await VaultDB.getItemsByFolder(folderId);
@@ -492,21 +558,59 @@ async function handlePendingShare() {
   if (!pending) return;
   localStorage.removeItem('vault-pending-share');
   try {
-    const { url, text, files } = JSON.parse(pending);
+    const { url, text } = JSON.parse(pending);
     const link = url || (text && /^https?:\/\//i.test(text.trim()) ? text.trim() : null);
     await VaultDB.init();
     state.folders = await VaultDB.getFolders();
-    openAddSheet();
-    if (files && files.length) {
-      state.pendingSharedFiles = files;
-      $('#addTab-file').click();
-    } else if (link) {
-      $('#addUrl').value = link;
+
+    if (link) {
+      state.incomingShare = { kind: 'link', url: link };
+      openQuickSaveSheet(link);
     } else if (text) {
-      $('#addTab-note').click();
-      $('#addNote').value = text;
+      state.incomingShare = { kind: 'note', text };
+      openQuickSaveSheet(text);
     }
   } catch (e) { /* ignore malformed */ }
+}
+
+// Tap-a-folder-to-save flow — used for incoming shares so there's no separate
+// "Save" button to miss. Saving happens the instant a folder is tapped.
+function openQuickSaveSheet(previewText) {
+  $('#quickSavePreview').textContent = previewText.length > 90 ? previewText.slice(0, 90) + '…' : previewText;
+  const list = $('#quickSaveFolderList');
+  list.innerHTML = '';
+  state.folders.forEach((f) => {
+    const row = document.createElement('button');
+    row.className = 'quick-folder-row';
+    row.innerHTML = `<span class="quick-folder-dot" style="background:${f.color}"></span> ${escapeHtml(f.name)}`;
+    row.addEventListener('click', () => quickSaveToFolder(f.id, f.name));
+    list.appendChild(row);
+  });
+  $('#quickSaveSheet').classList.add('open');
+}
+
+async function quickSaveToFolder(folderId, folderName) {
+  const share = state.incomingShare;
+  if (!share) return;
+  if (share.kind === 'link') {
+    const item = await VaultDB.addItem({ folderId, type: 'link', url: share.url, title: share.url.replace(/^https?:\/\//, '').slice(0, 60) });
+    const src = detectSource(share.url);
+    if (src === SOURCES.youtube) fetchYoutubePreview(item);
+  } else if (share.kind === 'note') {
+    await VaultDB.addItem({ folderId, type: 'note', text: share.text, title: share.text.slice(0, 40) });
+  }
+  state.incomingShare = null;
+  $('#quickSaveSheet').classList.remove('open');
+  showToast(`Saved to ${folderName}`);
+  await renderHome();
+}
+
+function showToast(message) {
+  const toast = $('#toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => toast.classList.remove('show'), 2200);
 }
 
 // ---------- Init ----------
@@ -523,6 +627,8 @@ async function init() {
   });
 
   $('#backToHome').addEventListener('click', () => { showScreen('home'); renderHome(); });
+  $('#feedViewToggle').addEventListener('click', toggleFeedViewMode);
+  $('#closeQuickSave').addEventListener('click', () => { $('#quickSaveSheet').classList.remove('open'); state.incomingShare = null; });
   $('#closeFolderMenu').addEventListener('click', closeFolderMenu);
   $('#folderMenuRename').addEventListener('click', renameFolderFlow);
   $('#folderMenuDelete').addEventListener('click', deleteFolderFlow);

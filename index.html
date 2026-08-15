@@ -33,10 +33,12 @@
       <button class="icon-btn" id="backToHome">←</button>
       <h2 id="feedFolderName">Folder</h2>
       <span class="feed-progress" id="feedProgress"></span>
+      <button class="icon-btn view-toggle-btn" id="feedViewToggle" title="Toggle view">☰</button>
     </div>
-    <div class="feed-viewport">
+    <div class="feed-viewport" id="feedViewport">
       <div class="feed-track" id="feedTrack"></div>
     </div>
+    <div class="feed-list" id="feedList"></div>
     <button class="fab" id="feedFabAdd">+</button>
   </div>
 
@@ -119,6 +121,21 @@
     <p class="muted" id="syncStatus" style="margin-top:12px;"></p>
   </div>
 </div>
+
+<!-- QUICK SAVE SHEET (for incoming shares — tap a folder to save immediately) -->
+<div class="sheet" id="quickSaveSheet">
+  <div class="sheet-inner">
+    <div class="sheet-header">
+      <h3>Save to Vault</h3>
+      <button class="icon-btn" id="closeQuickSave">✕</button>
+    </div>
+    <p class="muted" id="quickSavePreview" style="margin-bottom:14px;"></p>
+    <label class="field-label">Tap a folder to save</label>
+    <div id="quickSaveFolderList"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
 
 <!-- SEARCH SHEET -->
 <div class="sheet" id="searchSheet">
