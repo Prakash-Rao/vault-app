@@ -3,16 +3,33 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Saving to Vault...</title>
+<title>Vault — Share received</title>
 <link rel="stylesheet" href="styles.css">
+<style>
+  .debug-box {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; margin: 16px 20px; text-align: left; font-size: 13px;
+    word-break: break-word; max-height: 40vh; overflow-y: auto;
+  }
+  .debug-box div { margin-bottom: 8px; }
+  .debug-label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+</style>
 </head>
 <body>
-<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; gap:12px; text-align:center; padding:20px;">
+<div style="display:flex; flex-direction:column; align-items:center; padding-top:14vh; gap:10px; text-align:center;">
   <div style="font-size:34px;">⬡</div>
-  <p class="muted">Saving to Vault…</p>
+  <p class="muted">Here's exactly what Vault received:</p>
 </div>
+
+<div class="debug-box" id="debugBox">Reading…</div>
+
+<div style="padding: 0 20px;">
+  <button class="btn-primary" id="continueBtn" style="width:100%;">Continue to Vault</button>
+</div>
+
 <script>
-(async () => {
+(() => {
+  const rawQuery = window.location.search || '(no query string at all)';
   const params = new URLSearchParams(window.location.search);
   const payload = {
     title: params.get('title') || '',
@@ -20,36 +37,30 @@
     url: params.get('url') || ''
   };
 
-  // Check for a file/text payload handed off by the service worker (POST share-target flow)
-  try {
-    const cache = await caches.open('share-target-cache');
-    const payloadResp = await cache.match('/__shared-payload');
-    if (payloadResp) {
-      const swPayload = await payloadResp.json();
-      Object.assign(payload, swPayload);
-      await cache.delete('/__shared-payload');
+  const box = document.getElementById('debugBox');
+  box.innerHTML = `
+    <div><span class="debug-label">Raw URL received</span><br>${escapeHtml(window.location.href)}</div>
+    <div><span class="debug-label">title param</span><br>${escapeHtml(payload.title) || '(empty)'}</div>
+    <div><span class="debug-label">text param</span><br>${escapeHtml(payload.text) || '(empty)'}</div>
+    <div><span class="debug-label">url param</span><br>${escapeHtml(payload.url) || '(empty)'}</div>
+  `;
 
-      if (swPayload.fileCount) {
-        payload.files = [];
-        for (let i = 0; i < swPayload.fileCount; i++) {
-          const fResp = await cache.match(`/__shared-file-${i}`);
-          if (!fResp) continue;
-          const blob = await fResp.blob();
-          const dataUrl = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.readAsDataURL(blob);
-          });
-          const meta = (swPayload.fileMeta && swPayload.fileMeta[i]) || {};
-          payload.files.push({ dataUrl, fileType: meta.type, fileName: meta.name });
-          await cache.delete(`/__shared-file-${i}`);
-        }
-      }
-    }
-  } catch (e) { /* Cache API unavailable — fall back to query params only */ }
+  function escapeHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
 
-  localStorage.setItem('vault-pending-share', JSON.stringify(payload));
-  window.location.replace('./index.html');
+  document.getElementById('continueBtn').addEventListener('click', () => {
+    localStorage.setItem('vault-pending-share', JSON.stringify(payload));
+    window.location.replace('./index.html');
+  });
+
+  // Auto-continue after a few seconds if the person doesn't need to read it
+  setTimeout(() => {
+    localStorage.setItem('vault-pending-share', JSON.stringify(payload));
+    window.location.replace('./index.html');
+  }, 6000);
 })();
 </script>
 </body>
