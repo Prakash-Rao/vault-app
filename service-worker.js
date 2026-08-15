@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vault-cache-v1';
+const CACHE_NAME = 'vault-cache-v2';
 const ASSETS = [
   './index.html',
   './share.html',
@@ -26,14 +26,6 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url);
-
-  // Handle incoming shares (links, text, or files) from Android's native share sheet
-  if (e.request.method === 'POST' && url.pathname.endsWith('/share-target')) {
-    e.respondWith(handleShareTarget(e.request));
-    return;
-  }
-
   if (e.request.method !== 'GET') return;
   e.respondWith(
     caches.match(e.request).then((cached) => {
@@ -46,25 +38,3 @@ self.addEventListener('fetch', (e) => {
     })
   );
 });
-
-async function handleShareTarget(request) {
-  const formData = await request.formData();
-  const payload = {
-    title: formData.get('title') || '',
-    text: formData.get('text') || '',
-    url: formData.get('url') || ''
-  };
-  const files = formData.getAll('media').filter(f => f && f.size > 0);
-
-  const cache = await caches.open('share-target-cache');
-  if (files.length) {
-    payload.fileCount = files.length;
-    payload.fileMeta = files.map(f => ({ name: f.name, type: f.type }));
-    await Promise.all(files.map((f, i) =>
-      cache.put(`/__shared-file-${i}`, new Response(f, { headers: { 'Content-Type': f.type || 'application/octet-stream' } }))
-    ));
-  }
-  await cache.put('/__shared-payload', new Response(JSON.stringify(payload)));
-
-  return Response.redirect('./share.html', 303);
-}
