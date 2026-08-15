@@ -1,0 +1,49 @@
+{
+  "name": "Vault — Link & Note Organizer",
+  "short_name": "Vault",
+  "description": "Save links, notes, screenshots and files into your own folders.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#14171F",
+  "theme_color": "#14171F",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-192-maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Quick Note",
+      "short_name": "Note",
+      "description": "Jump straight to jotting down a note — handy mid-call",
+      "url": "./index.html?quicknote=1",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Quick Voice Memo",
+      "short_name": "Voice",
+      "description": "Jump straight to recording a voice memo",
+      "url": "./index.html?quickvoice=1",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "share_target": {
+    "action": "./share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "media",
+          "accept": ["image/*", "audio/*", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".html", ".htm"]
+        }
+      ]
+    }
+  }
+}

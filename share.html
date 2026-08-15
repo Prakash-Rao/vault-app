@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saving to Vault...</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; gap:12px; text-align:center; padding:20px;">
+  <div style="font-size:34px;">⬡</div>
+  <p class="muted">Saving to Vault…</p>
+</div>
+<script>
+(async () => {
+  const params = new URLSearchParams(window.location.search);
+  const payload = {
+    title: params.get('title') || '',
+    text: params.get('text') || '',
+    url: params.get('url') || ''
+  };
+
+  // Check for a file/text payload handed off by the service worker (POST share-target flow)
+  try {
+    const cache = await caches.open('share-target-cache');
+    const payloadResp = await cache.match('/__shared-payload');
+    if (payloadResp) {
+      const swPayload = await payloadResp.json();
+      Object.assign(payload, swPayload);
+      await cache.delete('/__shared-payload');
+
+      if (swPayload.fileCount) {
+        payload.files = [];
+        for (let i = 0; i < swPayload.fileCount; i++) {
+          const fResp = await cache.match(`/__shared-file-${i}`);
+          if (!fResp) continue;
+          const blob = await fResp.blob();
+          const dataUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+          const meta = (swPayload.fileMeta && swPayload.fileMeta[i]) || {};
+          payload.files.push({ dataUrl, fileType: meta.type, fileName: meta.name });
+          await cache.delete(`/__shared-file-${i}`);
+        }
+      }
+    }
+  } catch (e) { /* Cache API unavailable — fall back to query params only */ }
+
+  localStorage.setItem('vault-pending-share', JSON.stringify(payload));
+  window.location.replace('./index.html');
+})();
+</script>
+</body>
+</html>

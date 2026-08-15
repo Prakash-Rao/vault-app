@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Vault</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#14171F">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- HOME -->
+  <div class="screen active" id="screen-home">
+    <div class="topbar">
+      <h1>Vault</h1>
+      <div style="display:flex; gap:8px;">
+        <button class="icon-btn" id="searchOpen" title="Search">⌕</button>
+        <button class="icon-btn" id="syncOpen" title="Sync">⇅</button>
+        <button class="icon-btn" id="themeToggle" title="Theme">☀</button>
+      </div>
+    </div>
+    <div id="folderGrid"></div>
+    <button class="fab" id="fabAdd">+</button>
+  </div>
+
+  <!-- FEED -->
+  <div class="screen" id="screen-feed">
+    <div class="feed-header">
+      <button class="icon-btn" id="backToHome">←</button>
+      <h2 id="feedFolderName">Folder</h2>
+      <span class="feed-progress" id="feedProgress"></span>
+    </div>
+    <div class="feed-viewport">
+      <div class="feed-track" id="feedTrack"></div>
+    </div>
+    <button class="fab" id="feedFabAdd">+</button>
+  </div>
+
+</div>
+
+<!-- ADD SHEET -->
+<div class="sheet" id="addSheet">
+  <div class="sheet-inner">
+    <div class="sheet-header">
+      <h3>Save to Vault</h3>
+      <button class="icon-btn" id="closeAddSheet">✕</button>
+    </div>
+
+    <label class="field-label">Folder</label>
+    <select id="addFolderSelect"></select>
+
+    <div class="add-tabs">
+      <button class="add-tab active" data-tab="link" id="addTab-link">Link</button>
+      <button class="add-tab" data-tab="note" id="addTab-note">Note</button>
+      <button class="add-tab" data-tab="file" id="addTab-file">Screenshot / File</button>
+      <button class="add-tab" data-tab="voice" id="addTab-voice">Voice</button>
+    </div>
+
+    <div class="add-pane active" id="addPane-link">
+      <label class="field-label">Paste a link (YouTube, Instagram, Facebook, or any webpage)</label>
+      <input type="url" id="addUrl" placeholder="https://...">
+      <button class="btn-primary" id="submitLink">Save link</button>
+    </div>
+
+    <div class="add-pane" id="addPane-note">
+      <label class="field-label">Write a note</label>
+      <textarea id="addNote" placeholder="Type something..."></textarea>
+      <button class="btn-primary" id="submitNote">Save note</button>
+    </div>
+
+    <div class="add-pane" id="addPane-file">
+      <label class="field-label">Choose screenshots, photos, audio recordings, PDFs, Excel, Word, or HTML files (multi-select supported)</label>
+      <input type="file" id="addFileInput" accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.html,.htm" multiple>
+      <input type="file" id="addCameraInput" accept="image/*" capture="environment" style="display:none;">
+      <button class="btn-ghost" id="takePhotoBtn" style="width:100%; margin-top:10px;">📷 Take a photo</button>
+      <button class="btn-primary" id="submitFile">Save file</button>
+    </div>
+
+    <div class="add-pane" id="addPane-voice">
+      <label class="field-label">Record a voice memo</label>
+      <div class="voice-recorder">
+        <button class="btn-ghost" id="voiceRecordBtn" type="button">🎤 Start recording</button>
+        <span class="muted" id="voiceTimer">00:00</span>
+      </div>
+      <audio id="voicePreview" controls style="width:100%; margin-top:12px; display:none;"></audio>
+      <button class="btn-primary" id="submitVoice" style="display:none;">Save voice memo</button>
+    </div>
+  </div>
+</div>
+
+<!-- FOLDER MENU SHEET -->
+<div class="sheet" id="folderMenuSheet">
+  <div class="sheet-inner">
+    <div class="sheet-header">
+      <h3 id="folderMenuTitle">Folder</h3>
+      <button class="icon-btn" id="closeFolderMenu">✕</button>
+    </div>
+    <button class="btn-ghost menu-row" id="folderMenuRename">✎ Rename</button>
+    <button class="btn-ghost menu-row btn-danger" id="folderMenuDelete">🗑 Delete folder</button>
+  </div>
+</div>
+
+<!-- SYNC / BACKUP SHEET -->
+<div class="sheet" id="syncSheet">
+  <div class="sheet-inner">
+    <div class="sheet-header">
+      <h3>Backup &amp; Sync</h3>
+      <button class="icon-btn" id="closeSync">✕</button>
+    </div>
+    <label class="field-label">Server URL</label>
+    <input type="url" id="syncServerUrl" placeholder="https://your-vault-backend.example.com">
+    <label class="field-label">API key</label>
+    <input type="text" id="syncApiKey" placeholder="Your VAULT_API_KEY">
+    <button class="btn-primary" id="syncSave">Save &amp; sync now</button>
+    <p class="muted" id="syncStatus" style="margin-top:12px;"></p>
+  </div>
+</div>
+
+<!-- SEARCH SHEET -->
+<div class="sheet" id="searchSheet">
+  <div class="sheet-inner">
+    <div class="sheet-header">
+      <h3>Search</h3>
+      <button class="icon-btn" id="closeSearch">✕</button>
+    </div>
+    <input type="text" id="searchInput" placeholder="Search titles, notes, links...">
+    <div id="searchResults" style="margin-top:14px;"></div>
+  </div>
+</div>
+
+<script src="db.js"></script>
+<script src="sync.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
