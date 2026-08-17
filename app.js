@@ -842,9 +842,6 @@ async function init() {
   $('#exportDataBtn').addEventListener('click', exportAllData);
   $('#importDataBtn').addEventListener('click', importFromFile);
 
-  $('#feedPrev').addEventListener('click', () => goToFeedIndex(state.feedIndex - 1));
-  $('#feedNext').addEventListener('click', () => goToFeedIndex(state.feedIndex + 1));
-
   await handleIncomingShare();
   await handleQuickShortcut();
 
