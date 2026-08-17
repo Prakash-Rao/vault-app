@@ -8,6 +8,9 @@
 <meta name="theme-color" content="#14171F">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -20,6 +23,7 @@
       <div style="display:flex; gap:8px;">
         <button class="icon-btn" id="searchOpen" title="Search">⌕</button>
         <button class="icon-btn" id="syncOpen" title="Sync">⇅</button>
+        <button class="icon-btn" id="exportOpen" title="Backup">⬇</button>
         <button class="icon-btn" id="themeToggle" title="Theme">☀</button>
       </div>
     </div>
@@ -75,8 +79,8 @@
     </div>
 
     <div class="add-pane" id="addPane-file">
-      <label class="field-label">Choose screenshots, photos, audio recordings, PDFs, Excel, Word, or HTML files (multi-select supported)</label>
-      <input type="file" id="addFileInput" accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.html,.htm" multiple>
+      <label class="field-label">Choose any file — photos, PDFs, Word, Excel, text, or anything else (multi-select supported)</label>
+      <input type="file" id="addFileInput" accept="*/*" multiple>
       <input type="file" id="addCameraInput" accept="image/*" capture="environment" style="display:none;">
       <button class="btn-ghost" id="takePhotoBtn" style="width:100%; margin-top:10px;">📷 Take a photo</button>
       <button class="btn-primary" id="submitFile">Save file</button>
@@ -119,6 +123,34 @@
     <input type="text" id="syncApiKey" placeholder="Your VAULT_API_KEY">
     <button class="btn-primary" id="syncSave">Save &amp; sync now</button>
     <p class="muted" id="syncStatus" style="margin-top:12px;"></p>
+  </div>
+</div>
+
+<!-- BACKUP / EXPORT / IMPORT SHEET -->
+<div class="sheet" id="exportSheet">
+  <div class="sheet-inner">
+    <div class="sheet-header">
+      <h3>Backup your data</h3>
+      <button class="icon-btn" id="closeExport">✕</button>
+    </div>
+    <p class="muted" style="margin-bottom:16px;">Everything in Vault lives only on this phone. Download a backup file before uninstalling, switching phones, or clearing app data — you can restore from it any time.</p>
+    <button class="btn-primary" id="exportDataBtn" style="width:100%;">Download backup (.json)</button>
+    <label class="field-label" style="margin-top:20px;">Restore from a backup file</label>
+    <input type="file" id="importFileInput" accept="application/json,.json">
+    <button class="btn-ghost" id="importDataBtn" style="width:100%; margin-top:10px;">Restore from file</button>
+    <p class="muted" id="exportStatus" style="margin-top:12px;"></p>
+  </div>
+</div>
+
+<!-- FILE VIEWER SHEET -->
+<div class="sheet" id="viewerSheet">
+  <div class="sheet-inner">
+    <div class="sheet-header">
+      <h3 id="viewerTitle">File</h3>
+      <button class="icon-btn" id="closeViewer">✕</button>
+    </div>
+    <div class="viewer-body" id="viewerBody"></div>
+    <button class="btn-ghost" id="viewerOpenExternal" style="width:100%; margin-top:14px;">Open with another app</button>
   </div>
 </div>
 

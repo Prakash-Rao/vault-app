@@ -15,6 +15,28 @@ function detectSource(url) {
   return SOURCES.web;
 }
 
+// Builds a small visual cover for a folder card from its most recent items —
+// real thumbnails when available, colored glyph chips otherwise — so folders
+// read as a stack of saved things rather than an empty labeled box.
+function buildFolderCover(items) {
+  if (!items.length) {
+    return `<div class="folder-cover folder-cover--empty"><span>Empty</span></div>`;
+  }
+  const chips = items.slice(0, 3).map((item) => {
+    if ((item.type === 'screenshot' || item.type === 'link') && (item.dataUrl || item.thumbnail)) {
+      return `<div class="cover-chip"><img src="${item.dataUrl || item.thumbnail}" alt=""></div>`;
+    }
+    const src = detectSource(item.url);
+    let glyph = '⬡', color = 'var(--accent)';
+    if (item.type === 'link') { glyph = src.icon; color = src.color; }
+    else if (item.type === 'note') glyph = '📝';
+    else if (item.type === 'voice') glyph = '🎤';
+    else glyph = fileGlyph(item.fileType);
+    return `<div class="cover-chip cover-chip--glyph" style="color:${color}">${glyph}</div>`;
+  }).join('');
+  return `<div class="folder-cover">${chips}</div>`;
+}
+
 const state = {
   folders: [],
   currentFolder: null,
@@ -46,9 +68,11 @@ async function renderHome() {
     const card = document.createElement('div');
     card.className = 'folder-card';
     card.style.setProperty('--tab-color', folder.color);
+    const cover = buildFolderCover(items);
     card.innerHTML = `
       <div class="folder-tab"></div>
       <button class="folder-kebab" data-action="menu" title="Options">⋯</button>
+      ${cover}
       <div class="folder-body">
         <div class="folder-name">${escapeHtml(folder.name)}</div>
         <div class="folder-count">${items.length} item${items.length === 1 ? '' : 's'}</div>
@@ -205,9 +229,10 @@ function renderFeedCard(item) {
   } else if (item.type === 'note') {
     mediaHtml = `<div class="feed-note">${escapeHtml(item.text || '')}</div>`;
   } else if (item.type === 'file') {
-    mediaHtml = `<div class="feed-file">
+    mediaHtml = `<div class="feed-file" data-action="view">
       <div class="file-glyph">${fileGlyph(item.fileType)}</div>
       <div class="file-name">${escapeHtml(item.title || 'File')}</div>
+      <div class="file-view-hint">Tap to view</div>
     </div>`;
   } else if (item.type === 'voice') {
     mediaHtml = `<div class="feed-voice">
@@ -236,8 +261,91 @@ function renderFeedCard(item) {
   card.querySelector('[data-action="delete"]')?.addEventListener('click', () => deleteCurrentItem(item.id));
   card.querySelector('[data-action="open"]')?.addEventListener('click', () => openInApp(item.url));
   card.querySelector('[data-action="claude"]')?.addEventListener('click', () => sendToClaude(item));
+  card.querySelector('[data-action="view"]')?.addEventListener('click', () => viewFile(item));
 
   return card;
+}
+
+// ---------- File viewer ----------
+// Renders an in-app preview for common file types; anything unsupported falls
+// back to "Open with another app" via a real Android share/open sheet.
+async function viewFile(item) {
+  closeAllSheets();
+  $('#viewerTitle').textContent = item.title || 'File';
+  const body = $('#viewerBody');
+  body.innerHTML = '<p class="muted">Loading preview…</p>';
+  $('#viewerSheet').classList.add('open');
+  $('#viewerOpenExternal').onclick = () => openFileExternally(item);
+
+  const type = (item.fileType || '').toLowerCase();
+  const ext = (item.title || '').split('.').pop().toLowerCase();
+
+  try {
+    if (type.includes('pdf') || ext === 'pdf') {
+      body.innerHTML = `<iframe src="${item.dataUrl}" style="width:100%; height:60vh; border:none; border-radius:14px;"></iframe>`;
+    } else if (type.startsWith('image/')) {
+      body.innerHTML = `<img src="${item.dataUrl}" style="width:100%; border-radius:14px;" alt="">`;
+    } else if (type.startsWith('text/') || ext === 'txt') {
+      const text = await dataUrlToText(item.dataUrl);
+      body.innerHTML = `<pre class="text-preview">${escapeHtml(text)}</pre>`;
+    } else if (type.includes('wordprocessingml') || ext === 'docx') {
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js');
+      const arrayBuffer = await dataUrlToArrayBuffer(item.dataUrl);
+      const result = await mammoth.convertToHtml({ arrayBuffer });
+      body.innerHTML = `<div class="docx-preview">${result.value}</div>`;
+    } else if (type.includes('spreadsheetml') || type.includes('excel') || ['xlsx', 'xls', 'csv'].includes(ext)) {
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+      const arrayBuffer = await dataUrlToArrayBuffer(item.dataUrl);
+      const wb = XLSX.read(arrayBuffer, { type: 'array' });
+      const firstSheet = wb.Sheets[wb.SheetNames[0]];
+      body.innerHTML = `<div class="xlsx-preview">${XLSX.utils.sheet_to_html(firstSheet)}</div>`;
+    } else if (type === 'text/html' || ['html', 'htm'].includes(ext)) {
+      const html = await dataUrlToText(item.dataUrl);
+      body.innerHTML = `<iframe srcdoc="${escapeHtml(html)}" style="width:100%; height:55vh; border:none; border-radius:14px; background:#fff;"></iframe>`;
+    } else {
+      body.innerHTML = `<p class="muted">Vault can't preview this file type yet (${escapeHtml(ext || 'unknown')}). Use "Open with another app" below to view it.</p>`;
+    }
+  } catch (e) {
+    body.innerHTML = `<p class="muted">Couldn't generate a preview for this file. Use "Open with another app" below instead.</p>`;
+  }
+}
+
+function dataUrlToArrayBuffer(dataUrl) {
+  return fetch(dataUrl).then(r => r.arrayBuffer());
+}
+function dataUrlToText(dataUrl) {
+  return fetch(dataUrl).then(r => r.text());
+}
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Failed to load ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+// Hands the file to Android's own "Open with" chooser via a real Blob + share/download,
+// since Vault itself can't natively render every file format (e.g. .msg, .pptx, .zip).
+async function openFileExternally(item) {
+  try {
+    const blob = await (await fetch(item.dataUrl)).blob();
+    const file = new File([blob], item.title || 'file', { type: item.fileType || blob.type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: item.title });
+      return;
+    }
+  } catch (e) { /* fall through to download */ }
+  const blobUrl = URL.createObjectURL(await (await fetch(item.dataUrl)).blob());
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = item.title || 'file';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 8000);
 }
 
 // Open a link natively — Android will hand off to the installed app (YouTube/Instagram/
@@ -272,7 +380,10 @@ function fileGlyph(type) {
   if (type.includes('pdf')) return '📕';
   if (type.includes('sheet') || type.includes('excel') || type.includes('csv')) return '📊';
   if (type.includes('word') || type.includes('doc')) return '📘';
+  if (type.includes('presentation') || type.includes('powerpoint')) return '📙';
+  if (type.includes('zip') || type.includes('compressed')) return '🗜️';
   if (type.includes('html')) return '🌐';
+  if (type.startsWith('text/')) return '📝';
   return '📄';
 }
 
@@ -519,6 +630,7 @@ function closeSearch() { $('#searchSheet').classList.remove('open'); $('#searchI
 
 // ---------- Sync / Backup ----------
 function openSyncSheet() {
+  closeAllSheets();
   const { serverUrl, apiKey } = VaultSync.getSettings();
   $('#syncServerUrl').value = serverUrl;
   $('#syncApiKey').value = apiKey;
@@ -546,6 +658,53 @@ async function runSyncFromSheet() {
   }
 }
 
+// ---------- Local backup (export / import) — no server involved ----------
+function openExportSheet() {
+  closeAllSheets();
+  $('#exportStatus').textContent = '';
+  $('#importFileInput').value = '';
+  $('#exportSheet').classList.add('open');
+}
+
+async function exportAllData() {
+  try {
+    const [folders, items] = await Promise.all([VaultDB.getAllFoldersRaw(), VaultDB.getAllItemsRaw()]);
+    const backup = { app: 'vault', exportedAt: Date.now(), folders, items };
+    const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vault-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+    $('#exportStatus').textContent = `Downloaded — ${folders.length} folder(s), ${items.length} item(s).`;
+  } catch (e) {
+    $('#exportStatus').textContent = 'Export failed — please try again.';
+  }
+}
+
+async function importFromFile() {
+  const file = $('#importFileInput').files[0];
+  if (!file) { $('#exportStatus').textContent = 'Choose a backup file first.'; return; }
+  $('#exportStatus').textContent = 'Restoring…';
+  try {
+    const text = await file.text();
+    const backup = JSON.parse(text);
+    if (!backup || !Array.isArray(backup.folders) || !Array.isArray(backup.items)) {
+      throw new Error('Not a valid Vault backup file');
+    }
+    for (const f of backup.folders) await VaultDB.upsertFromServer('folders', f);
+    for (const it of backup.items) await VaultDB.upsertFromServer('items', it);
+    $('#exportStatus').textContent = `Restored ${backup.folders.length} folder(s), ${backup.items.length} item(s).`;
+    await renderHome();
+  } catch (e) {
+    $('#exportStatus').textContent = 'That file doesn\'t look like a valid Vault backup.';
+  }
+}
+
 // ---------- Screens ----------
 function showScreen(name) {
   $$('.screen').forEach(s => s.classList.remove('active'));
@@ -558,29 +717,33 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// ---------- Handle incoming share (from share.html via localStorage handoff) ----------
-async function handlePendingShare() {
-  const pending = localStorage.getItem('vault-pending-share');
-  if (!pending) return;
-  localStorage.removeItem('vault-pending-share');
-  try {
-    const { url, text } = JSON.parse(pending);
-    // Many apps (YouTube included) send the link buried inside a sentence,
-    // e.g. "Check out this video: https://youtu.be/xyz" — search for a URL
-    // anywhere in the text rather than requiring it to be the whole string.
-    const urlMatch = text && text.match(/https?:\/\/[^\s]+/i);
-    const link = url || (urlMatch ? urlMatch[0] : null);
-    await VaultDB.init();
-    state.folders = await VaultDB.getFolders();
+// ---------- Handle incoming share — read directly from this page's own URL,
+// no redirect and no localStorage handoff (that indirection was unreliable
+// under some Android share-target browsing contexts) ----------
+async function handleIncomingShare() {
+  const params = new URLSearchParams(window.location.search);
+  const url = params.get('url') || '';
+  const text = params.get('text') || '';
+  if (!url && !text) return;
 
-    if (link) {
-      state.incomingShare = { kind: 'link', url: link };
-      openQuickSaveSheet(link);
-    } else if (text) {
-      state.incomingShare = { kind: 'note', text };
-      openQuickSaveSheet(text);
-    }
-  } catch (e) { /* ignore malformed */ }
+  // Many apps (YouTube included) send the link buried inside a sentence,
+  // e.g. "Check out this video: https://youtu.be/xyz" — search for a URL
+  // anywhere in the text rather than requiring it to be the whole string.
+  const urlMatch = text && text.match(/https?:\/\/[^\s]+/i);
+  const link = url || (urlMatch ? urlMatch[0] : null);
+
+  state.folders = await VaultDB.getFolders();
+
+  if (link) {
+    state.incomingShare = { kind: 'link', url: link };
+    openQuickSaveSheet(link);
+  } else if (text) {
+    state.incomingShare = { kind: 'note', text };
+    openQuickSaveSheet(text);
+  }
+
+  // Clean the URL bar so refreshing the page doesn't re-trigger the same share
+  history.replaceState(null, '', window.location.pathname);
 }
 
 // Tap-a-folder-to-save flow — used for incoming shares so there's no separate
@@ -644,6 +807,7 @@ async function init() {
   $('#backToHome').addEventListener('click', () => { showScreen('home'); renderHome(); });
   $('#feedViewToggle').addEventListener('click', toggleFeedViewMode);
   $('#closeQuickSave').addEventListener('click', () => { $('#quickSaveSheet').classList.remove('open'); state.incomingShare = null; });
+  $('#closeViewer').addEventListener('click', () => $('#viewerSheet').classList.remove('open'));
   $('#closeFolderMenu').addEventListener('click', closeFolderMenu);
   $('#folderMenuRename').addEventListener('click', renameFolderFlow);
   $('#folderMenuDelete').addEventListener('click', deleteFolderFlow);
@@ -673,11 +837,15 @@ async function init() {
   $('#syncOpen').addEventListener('click', openSyncSheet);
   $('#closeSync').addEventListener('click', () => $('#syncSheet').classList.remove('open'));
   $('#syncSave').addEventListener('click', runSyncFromSheet);
+  $('#exportOpen').addEventListener('click', openExportSheet);
+  $('#closeExport').addEventListener('click', () => $('#exportSheet').classList.remove('open'));
+  $('#exportDataBtn').addEventListener('click', exportAllData);
+  $('#importDataBtn').addEventListener('click', importFromFile);
 
   $('#feedPrev').addEventListener('click', () => goToFeedIndex(state.feedIndex - 1));
   $('#feedNext').addEventListener('click', () => goToFeedIndex(state.feedIndex + 1));
 
-  await handlePendingShare();
+  await handleIncomingShare();
   await handleQuickShortcut();
 
   if ('serviceWorker' in navigator) {
