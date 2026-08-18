@@ -15,6 +15,20 @@ function detectSource(url) {
   return SOURCES.web;
 }
 
+// Pulls the video ID out of any common YouTube URL shape so it can be embedded
+// and played inline instead of always jumping out to the YouTube app.
+function extractYoutubeId(url) {
+  if (!url) return null;
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{6,15})/
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 // Builds a small visual cover for a folder card from its most recent items —
 // real thumbnails when available, colored glyph chips otherwise — so folders
 // read as a stack of saved things rather than an empty labeled box.
@@ -45,7 +59,9 @@ const state = {
   pendingSharedFiles: null,
   recordedVoice: null,
   feedViewMode: 'list',
-  incomingShare: null
+  incomingShare: null,
+  selectMode: false,
+  selectedIds: new Set()
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -132,6 +148,10 @@ async function openFolder(folderId) {
   state.feedItems = await VaultDB.getItemsByFolder(folderId);
   state.feedIndex = 0;
   state.feedViewMode = 'list'; // default to list — easier to scan as a folder grows
+  state.selectMode = false;
+  state.selectedIds.clear();
+  $('#selectModeToggle').textContent = '☑';
+  $('#bulkBar').classList.remove('active');
   $('#feedFolderName').textContent = state.currentFolder.name;
   showScreen('feed');
   renderFeed();
@@ -208,14 +228,54 @@ function renderListRow(item, index) {
     : (item.fileType || 'File');
 
   row.innerHTML = `
+    ${state.selectMode ? `<div class="list-checkbox">${state.selectedIds.has(item.id) ? '✓' : ''}</div>` : ''}
     ${thumbHtml}
     <div class="list-row-text">
       <div class="list-row-title">${escapeHtml(item.title || subtitle || 'Untitled')}</div>
       <div class="list-row-sub">${escapeHtml(subtitle)}</div>
     </div>
   `;
-  row.addEventListener('click', () => openFeedAtIndex(index));
+  if (state.selectMode) {
+    row.classList.toggle('selected', state.selectedIds.has(item.id));
+    row.addEventListener('click', () => toggleItemSelection(item.id));
+  } else {
+    row.addEventListener('click', () => openFeedAtIndex(index));
+  }
   return row;
+}
+
+function toggleItemSelection(id) {
+  if (state.selectedIds.has(id)) state.selectedIds.delete(id);
+  else state.selectedIds.add(id);
+  renderFeed();
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const n = state.selectedIds.size;
+  $('#bulkCount').textContent = `${n} selected`;
+  $('#bulkBar').classList.toggle('active', state.selectMode && n > 0);
+}
+
+function toggleSelectMode() {
+  state.selectMode = !state.selectMode;
+  state.selectedIds.clear();
+  $('#selectModeToggle').textContent = state.selectMode ? '✕' : '☑';
+  if (state.selectMode) { state.feedViewMode = 'list'; applyFeedViewMode(); }
+  renderFeed();
+  updateBulkBar();
+}
+
+async function bulkDeleteSelected() {
+  const n = state.selectedIds.size;
+  if (!n) return;
+  if (!confirm(`Delete ${n} item${n === 1 ? '' : 's'}? This can't be undone.`)) return;
+  for (const id of state.selectedIds) await VaultDB.deleteItem(id);
+  toggleSelectMode();
+  state.feedItems = await VaultDB.getItemsByFolder(state.currentFolder.id);
+  renderFeed();
+  await renderHome();
+  showToast(`Deleted ${n} item${n === 1 ? '' : 's'}`);
 }
 
 function renderFeedCard(item) {
@@ -241,12 +301,24 @@ function renderFeedCard(item) {
       <audio controls src="${item.dataUrl}" style="width:100%; margin-top:14px;"></audio>
     </div>`;
   } else {
-    mediaHtml = `<div class="feed-link" style="--src-color:${src.color}">
-      <div class="src-badge">${src.icon} ${src.label}</div>
-      ${item.thumbnail ? `<img class="link-thumb" src="${item.thumbnail}" alt="">` : ''}
-      <div class="link-title">${escapeHtml(item.title || item.url || '')}</div>
-      <div class="link-url">${escapeHtml(item.url || '')}</div>
-    </div>`;
+    const ytId = src === SOURCES.youtube ? extractYoutubeId(item.url) : null;
+    if (ytId) {
+      // Plays right here in Vault via YouTube's embed player — no app switch needed.
+      mediaHtml = `<div class="feed-link feed-link--video" style="--src-color:${src.color}">
+        <div class="src-badge">${src.icon} ${src.label}</div>
+        <div class="yt-embed-wrap">
+          <iframe src="https://www.youtube.com/embed/${ytId}" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="width:100%; aspect-ratio:16/9; border:none; border-radius:12px;"></iframe>
+        </div>
+        <div class="link-title">${escapeHtml(item.title || item.url || '')}</div>
+      </div>`;
+    } else {
+      mediaHtml = `<div class="feed-link" style="--src-color:${src.color}">
+        <div class="src-badge">${src.icon} ${src.label}</div>
+        ${item.thumbnail ? `<img class="link-thumb" src="${item.thumbnail}" alt="">` : ''}
+        <div class="link-title">${escapeHtml(item.title || item.url || '')}</div>
+        <div class="link-url">${escapeHtml(item.url || '')}</div>
+      </div>`;
+    }
   }
 
   card.innerHTML = `
@@ -806,6 +878,9 @@ async function init() {
 
   $('#backToHome').addEventListener('click', () => { showScreen('home'); renderHome(); });
   $('#feedViewToggle').addEventListener('click', toggleFeedViewMode);
+  $('#selectModeToggle').addEventListener('click', toggleSelectMode);
+  $('#bulkCancel').addEventListener('click', toggleSelectMode);
+  $('#bulkDelete').addEventListener('click', bulkDeleteSelected);
   $('#closeQuickSave').addEventListener('click', () => { $('#quickSaveSheet').classList.remove('open'); state.incomingShare = null; });
   $('#closeViewer').addEventListener('click', () => $('#viewerSheet').classList.remove('open'));
   $('#closeFolderMenu').addEventListener('click', closeFolderMenu);

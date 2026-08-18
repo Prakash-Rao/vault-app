@@ -37,12 +37,20 @@
       <button class="icon-btn" id="backToHome">←</button>
       <h2 id="feedFolderName">Folder</h2>
       <span class="feed-progress" id="feedProgress"></span>
+      <button class="icon-btn" id="selectModeToggle" title="Select items">☑</button>
       <button class="icon-btn view-toggle-btn" id="feedViewToggle" title="Toggle view">☰</button>
     </div>
     <div class="feed-viewport" id="feedViewport">
       <div class="feed-track" id="feedTrack"></div>
     </div>
     <div class="feed-list" id="feedList"></div>
+    <div class="bulk-bar" id="bulkBar">
+      <span id="bulkCount">0 selected</span>
+      <div style="display:flex; gap:8px;">
+        <button class="btn-ghost" id="bulkCancel">Cancel</button>
+        <button class="btn-primary btn-danger-fill" id="bulkDelete">Delete</button>
+      </div>
+    </div>
     <button class="fab" id="feedFabAdd">+</button>
   </div>
 
